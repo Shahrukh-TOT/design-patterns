@@ -1,9 +1,10 @@
-import { DataStore, Server } from ".";
+import { Server } from ".";
 
 export class Client {
-    store: DataStore = {
+    store: ClientDataStore = {
         timestamp: 0,
-        data: undefined
+        items: {},
+        changed: {}
     };
 
     constructor(
@@ -11,15 +12,63 @@ export class Client {
     ) { }
 
     synchronize(): void {
-        let updatedStore = this.server.synchronize(this.store);
-        if (updatedStore) {
-            this.store = updatedStore;
+        let store = this.store;
+        let clientItems = store.items;
+        let clientChanges = {}
+        let changedTimes = store.changed;
+
+
+        for (const id of Object.keys(changedTimes)) {
+            clientChanges[id] = {
+                lastModifiedTime: changedTimes[id],
+                value: clientItems[id].value
+            }
         }
+
+        let response = this.server.synchronize({
+            timestamp: store.timestamp,
+            clientTime: Date.now(),
+            changes: clientChanges
+        });
+
+        let serverChanges = response.changes;
+
+        for (let id of Object.keys(serverChanges)) {
+            clientItems[id] = {
+                id,
+                value: serverChanges[id]
+            };
+        }
+
+        store.timestamp = response.timestamp;
+        store.changed = {};
     }
 
-    update(data: string): void {
-        this.store.data = data;
-        this.store.timestamp = Date.now();
+    update(id: string, value: string): void {
+        let store = this.store;
+        store.items[id] = {
+            id,
+            value
+        }
+
+        store.changed[id] = Date.now();
     }
 
+}
+
+
+export interface ClientDataItem<T> {
+    id: string;
+    value: T;
+}
+
+export interface ClientDataStore {
+    timestamp: number;
+    items: {
+        [id: string]: ClientDataItem<number | string>
+    }
+
+    changed: {
+        [id: string]: number
+    }
 }
